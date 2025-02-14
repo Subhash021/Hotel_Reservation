@@ -1,0 +1,69 @@
+import { useState } from "react";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
+
+const floors = {
+  1: [101, 102, 105, 106],
+  2: [201, 202, 203, 210],
+  3: [301, 302],
+};
+
+export default function HotelReservation() {
+  const [selectedRooms, setSelectedRooms] = useState([]);
+
+  const toggleRoomSelection = (room) => {
+    setSelectedRooms((prev) =>
+      prev.includes(room) ? prev.filter((r) => r !== room) : [...prev, room]
+    );
+  };
+
+  const calculateTravelTime = (rooms) => {
+    if (rooms.length <= 1) return 0;
+    rooms.sort((a, b) => a - b);
+    let time = 0;
+    for (let i = 1; i < rooms.length; i++) {
+      const prevFloor = Math.floor(rooms[i - 1] / 100);
+      const currFloor = Math.floor(rooms[i] / 100);
+      if (prevFloor === currFloor) {
+        time += Math.abs(rooms[i] - rooms[i - 1]);
+      } else {
+        time += Math.abs(currFloor - prevFloor) * 2;
+      }
+    }
+    return time;
+  };
+
+  return (
+    <div className="p-4">
+      <h1 className="text-xl font-bold mb-4">Hotel Room Reservation System</h1>
+      <div className="grid grid-cols-3 gap-4">
+        {Object.entries(floors).map(([floor, rooms]) => (
+          <Card key={floor} className="p-2">
+            <h2 className="text-lg font-semibold">Floor {floor}</h2>
+            <CardContent className="grid grid-cols-2 gap-2 mt-2">
+              {rooms.map((room) => (
+                <label key={room} className="flex items-center gap-2">
+                  <Checkbox
+                    checked={selectedRooms.includes(room)}
+                    onCheckedChange={() => toggleRoomSelection(room)}
+                  />
+                  Room {room}
+                </label>
+              ))}
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+      <div className="mt-4">
+        <h2 className="text-lg font-semibold">Selected Rooms:</h2>
+        <p>{selectedRooms.length ? selectedRooms.join(", ") : "None"}</p>
+        <p>Estimated Travel Time: {calculateTravelTime(selectedRooms)} mins</p>
+        <Button className="mt-2" disabled={selectedRooms.length === 0}>
+          Confirm Booking
+        </Button>
+      </div>
+    </div>
+  );
+}
