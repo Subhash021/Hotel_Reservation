@@ -1,69 +1,73 @@
-import { useState } from "react";
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Checkbox } from "@/components/ui/checkbox";
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+from typing import List
 
-const floors = {
-  1: [101, 102, 105, 106],
-  2: [201, 202, 203, 210],
-  3: [301, 302],
-};
+app = FastAPI()
 
-export default function HotelReservation() {
-  const [selectedRooms, setSelectedRooms] = useState([]);
-
-  const toggleRoomSelection = (room) => {
-    setSelectedRooms((prev) =>
-      prev.includes(room) ? prev.filter((r) => r !== room) : [...prev, room]
-    );
-  };
-
-  const calculateTravelTime = (rooms) => {
-    if (rooms.length <= 1) return 0;
-    rooms.sort((a, b) => a - b);
-    let time = 0;
-    for (let i = 1; i < rooms.length; i++) {
-      const prevFloor = Math.floor(rooms[i - 1] / 100);
-      const currFloor = Math.floor(rooms[i] / 100);
-      if (prevFloor === currFloor) {
-        time += Math.abs(rooms[i] - rooms[i - 1]);
-      } else {
-        time += Math.abs(currFloor - prevFloor) * 2;
-      }
-    }
-    return time;
-  };
-
-  return (
-    <div className="p-4">
-      <h1 className="text-xl font-bold mb-4">Hotel Room Reservation System</h1>
-      <div className="grid grid-cols-3 gap-4">
-        {Object.entries(floors).map(([floor, rooms]) => (
-          <Card key={floor} className="p-2">
-            <h2 className="text-lg font-semibold">Floor {floor}</h2>
-            <CardContent className="grid grid-cols-2 gap-2 mt-2">
-              {rooms.map((room) => (
-                <label key={room} className="flex items-center gap-2">
-                  <Checkbox
-                    checked={selectedRooms.includes(room)}
-                    onCheckedChange={() => toggleRoomSelection(room)}
-                  />
-                  Room {room}
-                </label>
-              ))}
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-      <div className="mt-4">
-        <h2 className="text-lg font-semibold">Selected Rooms:</h2>
-        <p>{selectedRooms.length ? selectedRooms.join(", ") : "None"}</p>
-        <p>Estimated Travel Time: {calculateTravelTime(selectedRooms)} mins</p>
-        <Button className="mt-2" disabled={selectedRooms.length === 0}>
-          Confirm Booking
-        </Button>
-      </div>
-    </div>
-  );
+# Sample room availability
+rooms = {
+    1: [101, 102, 105, 106],
+    2: [201, 202, 203, 210],
+    3: [301, 302]
 }
+
+booked_rooms = {}
+
+class BookingRequest(BaseModel):
+    guest_id: int
+    num_rooms: int
+
+class BookingResponse(BaseModel):
+    guest_id: int
+    booked_rooms: List[int]
+    total_travel_time: int
+
+def calculate_travel_time(selected_rooms):
+    floors = list(set(room // 100 for room in selected_rooms))
+    floors.sort()
+    total_time = 0
+    
+    for i in range(len(floors) - 1):
+        total_time += (floors[i+1] - floors[i]) * 2
+    
+    selected_rooms.sort()
+    total_time += (selected_rooms[-1] % 100 - selected_rooms[0] % 100)
+    
+    return total_time
+
+@app.get("/rooms/available")
+def get_available_rooms():
+    return rooms
+
+@app.post("/book", response_model=BookingResponse)
+def book_rooms(request: BookingRequest):
+    available = []
+    for floor, room_list in rooms.items():
+        available.extend(room_list)
+    
+    if len(available) < request.num_rooms:
+        raise HTTPException(status_code=400, detail="Not enough available rooms")
+    
+    selected_rooms = available[:request.num_rooms]
+    total_time = calculate_travel_time(selected_rooms)
+    
+    for room in selected_rooms:
+        floor = room // 100
+        rooms[floor].remove(room)
+        booked_rooms[room] = request.guest_id
+    
+    return BookingResponse(guest_id=request.guest_id, booked_rooms=selected_rooms, total_travel_time=total_time)
+
+@app.post("/cancel")
+def cancel_booking(guest_id: int):
+    to_cancel = [room for room, guest in booked_rooms.items() if guest == guest_id]
+    
+    if not to_cancel:
+        raise HTTPException(status_code=404, detail="No booking found")
+    
+    for room in to_cancel:
+        floor = room // 100
+        rooms[floor].append(room)
+        del booked_rooms[room]
+    
+    return {"message": "Booking canceled", "canceled_rooms": to_cancel}
